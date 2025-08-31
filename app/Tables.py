@@ -28,8 +28,14 @@ class Tables():
         except Exception as e:
             raise Exception("Connection error:", e)
 
+    def disconnect(self):
+        """BD disconnect"""
+        if self.connection:
+            self.connection.close()
+            self.connection = None
+
     def get_sql_type(self, type_name: str) -> str:
-        """Преобразовать тип в SQL тип"""
+        """Type to SQL type transformation"""
         type_mapping = {
             'integer': 'INTEGER',
             'real': 'REAL',
@@ -67,3 +73,21 @@ class Tables():
 
         except Exception as e:
             raise Exception("Create table error:", e)
+
+    def get_tables(self):
+        """Get all tables"""
+        if not self.connection:
+            return []
+
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'public'
+                    ORDER BY table_name
+                """)
+                return [row[0] for row in cursor.fetchall()]
+        except Exception:
+            return []
+
