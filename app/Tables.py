@@ -91,3 +91,52 @@ class Tables():
         except Exception:
             return []
 
+    def remove_table(self, table_name: str):
+        """Remove table"""
+        if not self.connection:
+            return False
+
+        try:
+            with self.connection.cursor() as cursor:
+                query = sql.SQL("DROP TABLE IF EXISTS {}").format(
+                    sql.Identifier(table_name)
+                )
+                cursor.execute(query)
+                self.connection.commit()
+                return True
+
+        except Exception as e:
+            raise Exception("REmove table error:", e)
+
+    def get_info(self, table_name: str):
+        """Get info about the table"""
+        if not self.connection:
+            return []
+
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT 
+                        column_name, 
+                        data_type,
+                        is_nullable,
+                        column_default
+                    FROM information_schema.columns 
+                    WHERE table_name = %s 
+                    ORDER BY ordinal_position
+                """, (table_name,))
+
+                columns = []
+                for row in cursor.fetchall():
+                    columns.append({
+                        'name': row[0],
+                        'type': row[1],
+                        'nullable': row[2] == 'YES',
+                        'default': row[3]
+                    })
+                return columns
+
+        except Exception:
+            return []
+
+
