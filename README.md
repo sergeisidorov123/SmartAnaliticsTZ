@@ -23,7 +23,7 @@
 
 <img width="481" height="358" alt="image" src="https://github.com/user-attachments/assets/fba2a0b4-e706-4933-9409-5c9686293252" />
 
-SELECT SalespersonPersonID, COUNT(*) AS OrderCount FROM Sales.Orders
+SELECT SalespersonPersonID, COUNT(*) AS OrderCount FROM Sales.Orders 
 WHERE YEAR(OrderDate) = 2013
 GROUP BY SalespersonPersonID
 
