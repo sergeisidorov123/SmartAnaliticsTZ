@@ -8,7 +8,7 @@ class TableApp():
     def __init__(self, root):
         self.root = root
         self.root.title("DB tables editor")
-        self.root.geometry("1000x600")
+        self.root.geometry("600x600")
 
         self.Tables = None
         self.current_table = None
@@ -31,6 +31,7 @@ class TableApp():
                 self.hide_loading_message()
                 return
         except Exception:
+            self.hide_loading_message()
             self.hide_loading_message()
             messagebox.showerror("Error",
                                  "Failed to connect to database. "
@@ -87,8 +88,9 @@ class TableApp():
         self.tables_listbox.bind('<<ListboxSelect>>', self.table_select)
 
         self.table_frame = ttk.LabelFrame(main_frame, text="Table settings", padding="5")
-        main_frame.grid(row=1, column=1, sticky="nsew")
+        self.table_frame.grid(row=1, column=1, sticky="nsew")
         self.table_frame.columnconfigure(0, weight=1)
+        self.table_frame.rowconfigure(1, weight=1)
 
         button_frame = ttk.Frame(self.table_frame)
         button_frame.grid(row=0, column=0, sticky='we', pady=5)
@@ -106,13 +108,14 @@ class TableApp():
         self.columns_tree.heading('type', text='Type')
         self.columns_tree.heading('nullable', text='Null')
         self.columns_tree.heading('default', text='Default')
+        self.columns_tree.column('#0', width=120)
+        self.columns_tree.column('type', width=100)
+        self.columns_tree.column('nullable', width=50)
+        self.columns_tree.column('default', width=100)
 
         scrollbar = ttk.Scrollbar(columns_frame, orient=tk.VERTICAL, command=self.columns_tree.yview)
         self.columns_tree.configure(yscrollcommand=scrollbar.set)
 
-        main_frame.grid(row=0, column=0, sticky="nsew")
-
-        main_frame.grid(row=0, column=0, sticky="ns")
 
 
     def table_select(self, event = None):
@@ -128,16 +131,19 @@ class TableApp():
     def show_table_info(self, table_name):
         """Get info about the table"""
         self.columns_tree.delete(*self.columns_tree.get_children())
-
         columns = self.Tables.get_info(table_name)
-        for column in columns:
-            self.columns_tree.insert('', 'end', text=column['name'],
-                                     values=(column['type'], column['nullable'], column['default']))
+        for col in columns:
+            self.columns_tree.insert('', 'end', text=col['name'], values=(
+                col['type'],
+                'YES' if col['nullable'] else 'NO',
+                col['default'] if col['default'] else ''
+            ))
 
     def show_connection_message(self):
         """DB connection message"""
         message = ConnectionMessage(self.root, self)
         self.root.wait_window(message)
+        self.hide_loading_message()
 
     def refresh_tables(self):
         """Refresh tables after some moves"""
@@ -165,6 +171,13 @@ class TableApp():
             messagebox.showinfo("Info", "Choose table to edit")
             return
 
+        current_columns = self.Tables.get_info(self.current_table)
+
+        message = TableEditorMessage(self.root, f"Edit table: {self.current_table}", self.Tables, self.current_table,
+                                     current_columns)
+        self.root.wait_window(message)
+        self.refresh_tables()
+
     def delete_table_message(self):
         """Delete table message"""
         if not self.current_table:
@@ -174,7 +187,7 @@ class TableApp():
         result = messagebox.askyesno("Confirm",
                                      f"Are you sure you want to delete: '{self.current_table}'?")
         if result:
-            if self.Tables.drop_table(self.current_table):
+            if self.Tables.remove_table(self.current_table):
                 messagebox.showinfo("Info", "Table delete")
                 self.current_table = None
                 self.refresh_tables()
@@ -183,16 +196,43 @@ class TableApp():
                 messagebox.showerror("Error", "Can't delete the table")
 
 class TableEditorMessage(tk.Toplevel):
-    def __init__(self, parent, title, db_manager):
+    def __init__(self, parent, title, db_manager, table_name=None, existing_columns=None):
         super().__init__(parent)
         self.db_manager = db_manager
+        self.table_name = table_name
         self.title(title)
         self.geometry("600x500")
         self.resizable(False, False)
 
-        self.columns = []
+        self.columns = existing_columns if existing_columns else []
+        self.existing_pk = self.get_current_pk()
         self.gui_settings()
         self.grab_set()
+
+        if table_name:
+            self.name_entry.insert(0, table_name)
+            self.name_entry.config(state='disabled')
+            self.update_columns()
+
+    def get_current_pk(self):
+        """get current primary key"""
+        if not self.table_name or not self.db_manager.connection:
+            return ""
+        try:
+            with self.db_manager.connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT a.attname
+                    FROM   pg_index i
+                    JOIN   pg_attribute a ON a.attrelid = i.indrelid
+                                         AND a.attnum = ANY(i.indkey)
+                    WHERE  i.indrelid = %s::regclass
+                    AND    i.indisprimary;
+                """, (self.table_name,))
+                row = cursor.fetchone()
+                return row[0] if row else ""
+        except Exception as e:
+            print("Error getting PK:", e)
+            return ""
 
     def gui_settings(self):
         """GUI settings"""
@@ -203,15 +243,17 @@ class TableEditorMessage(tk.Toplevel):
         self.name_entry = ttk.Entry(main_frame, width=30)
         self.name_entry.grid(row=0, column=1, pady=5, padx=(10, 0))
 
-        ttk.Label(main_frame, text="Foreign key:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(main_frame, text="Primary key:").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.pk_entry = ttk.Entry(main_frame, width=30)
         self.pk_entry.grid(row=1, column=1, pady=5, padx=(10, 0))
+        if self.existing_pk:
+            self.pk_entry.insert(0, self.existing_pk)
 
         columns_frame = ttk.LabelFrame(main_frame, text="Columns", padding="10")
         columns_frame.grid(row=2, column=0, columnspan=2, sticky="we", pady=10)
         columns_frame.columnconfigure(1, weight=1)
 
-        self.columns_tree = ttk.Treeview(columns_frame, columns=('type',), show='headings', height=8)
+        self.columns_tree = ttk.Treeview(columns_frame, columns=('type',), show='tree headings', height=8)
         self.columns_tree.heading('#0', text='Name')
         self.columns_tree.heading('type', text='Type')
 
@@ -227,8 +269,10 @@ class TableEditorMessage(tk.Toplevel):
         button_frame = ttk.Frame(main_frame)
         button_frame.grid(row=3, column=0, columnspan=2, pady=20)
 
-        ttk.Button(button_frame, text="Create", command=self.create_table).pack(side=tk.LEFT, padx=10)
+        ttk.Button(button_frame, text="Save", command=self.create_table).pack(side=tk.LEFT, padx=10)
         ttk.Button(button_frame, text="Cancel", command=self.destroy).pack(side=tk.LEFT, padx=10)
+
+        self.update_columns()
 
     def add_column(self):
         """Add column to the table"""
@@ -257,7 +301,7 @@ class TableEditorMessage(tk.Toplevel):
             self.columns_tree.insert('', 'end', text=column['name'], values=(column['type'],))
 
     def create_table(self):
-        """Create table"""
+        """Create or update table"""
         table_name = self.name_entry.get().strip()
         primary_key = self.pk_entry.get().strip()
 
@@ -273,11 +317,27 @@ class TableEditorMessage(tk.Toplevel):
             messagebox.showerror("Error", "Primary key is not unique")
             return
 
-        if self.db_manager.create_table(table_name, self.columns, primary_key):
-            messagebox.showinfo("Info", "Table created successfully")
-            self.destroy()
+        if self.table_name:
+            try:
+                if not self.db_manager.remove_table(self.table_name):
+                    messagebox.showerror("Error", "Can't delete old table")
+                    return
+
+                if self.db_manager.create_table(table_name, self.columns, primary_key):
+                    messagebox.showinfo("Info", "Table updated successfully")
+                    self.destroy()
+                else:
+                    messagebox.showerror("Error", "Can't create new table")
+
+            except Exception as e:
+                messagebox.showerror("Error", f"Update failed: {str(e)}")
+
         else:
-            messagebox.showerror("Error", "Can't create table")
+            if self.db_manager.create_table(table_name, self.columns, primary_key):
+                messagebox.showinfo("Info", "Table created successfully")
+                self.destroy()
+            else:
+                messagebox.showerror("Error", "Can't create table")
 
 
 class ConnectionMessage(tk.Toplevel):
@@ -312,7 +372,7 @@ class ConnectionMessage(tk.Toplevel):
         self.user_entry.insert(0, "postgres")
 
         ttk.Label(main_frame, text="Password:").grid(row=3, column=0, sticky=tk.W, pady=5)
-        self.password_entry = ttk.Entry(main_frame, width=30, show="*")
+        self.password_entry = ttk.Entry(main_frame, width=30, show="")
         self.password_entry.grid(row=3, column=1, pady=5, padx=(10, 0))
 
         ttk.Label(main_frame, text="Port:").grid(row=4, column=0, sticky=tk.W, pady=5)

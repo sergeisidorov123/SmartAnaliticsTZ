@@ -4,12 +4,11 @@ import psycopg2
 
 
 class Tables():
-    def __init__(self, name, host, database, user, password, port = 5432):
+    def __init__(self, host, database, user, password, port = 5432):
         self.connection = None
         self.host = host
         self.database = database
         self.user = user
-        self.name = name
         self.port = port
         self.password = password
 
@@ -18,7 +17,6 @@ class Tables():
         try:
             self.connection = psycopg2.connect(
                 host=self.host,
-                name=self.name,
                 database=self.database,
                 user=self.user,
                 password=self.password,
