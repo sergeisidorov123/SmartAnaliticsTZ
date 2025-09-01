@@ -1,4 +1,4 @@
-<img width="527" height="196" alt="image" src="https://github.com/user-attachments/assets/64ccf788-9391-40b2-8f51-e9f5624955a5" />**Здравствуйте!**
+**Здравствуйте!**
 
 Чтобы запустить проект, нужно воспользоваться х-сервером, т.к. докер не может открыть gui на рабочем экране.
 Я пользовался :  https://github.com/marchaesen/vcxsrv
